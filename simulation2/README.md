@@ -401,6 +401,15 @@ For the test config, expected output files will be in `test_run/sim_run-<uuid>/`
 
 Relative paths in a config resolve against the directory Snakemake is started from.
 
+## Containers
+Every rule has a `container:` directive with the image in `main_image`. Run with
+`--use-singularity` (and `--singularity-args "--bind <dir>"` for input files outside the
+working directory) to use it; without it, the tools must be on the `PATH`.
+The image is built from `container/Dockerfile` by the GitHub workflow
+`.github/workflows/simulator-image.yml` and pushed to `ghcr.io/<owner>/tes-aav-simulator`
+(tags: git tag, and `sha-<commit>`). The tool versions and the Python packages
+(`container/constraints.txt`) are pinned, so seeded runs give the same reads.
+
 ## Running Unit Tests
 
 The pipeline includes a suite of tests to validate core functionality. Tests are located in `workflow/scripts/tests/` and use Python's `unittest` framework.
@@ -614,6 +623,11 @@ The "twist" model implements an empirical enrichment probability function based 
 | `badread.glitches` | Glitch Parameters | Glitch rate parameters: rate,size,skip | `3000,1,1` | string |
 | `badread.junk_reads` | Junk Read Percentage | Percentage of junk reads (should be 0 for long fragments) | `0` | float |
 | `badread.random_reads` | Random Read Percentage | Percentage of random reads (should be 0 for long fragments) | `0` | float |
+
+### Container Image
+| Variable | Full Name | Description | Default | Type |
+|----------|-----------|-------------|---------|------|
+| `main_image` | Container Image | Image used by every rule with `--use-singularity` (see [Containers](#containers)) | `docker://ghcr.io/bedapub/tes-aav-simulator:v1-paired` | string |
 
 **Note:** A complete tab-separated list of all configuration parameters is available in `config_parameters.tsv`.
 

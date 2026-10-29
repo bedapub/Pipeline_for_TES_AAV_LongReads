@@ -57,7 +57,11 @@ include: pipeline_dir / "workflow/rules/common.smk"
 config['pipeline_dir'] = pipeline_dir
 config['scripts_dir'] = pipeline_dir / "workflow/scripts"
 parse_config()
+main_image = str(config['main_image']) # container image with all software (--use-singularity)
 
+
+# Rules too light for a cluster job:
+localrules: all, check_reference, clean
 
 ###############
 # Input check #
@@ -78,6 +82,8 @@ rule check_reference:
         genome_fnam=config["genome_fnam"],
         scrip_dir=config['pipeline_dir'] / "workflow/scripts"
     threads: 1
+    container:
+        main_image
     shell:
         "python {params.scrip_dir}/ref_length.py --max_len {params.max_len} "
         "--fa {params.genome_fnam} --chrom_lengths_out {output.chrom_lengths} > {output.check}"
@@ -105,6 +111,8 @@ rule draw_integration_sites:
         seed_arg=get_repeat_seed,
         vsearch_seed=lambda wildcards: get_repeat_seed(wildcards, "vsearch")
     threads: 1
+    container:
+        main_image
     # 1. Use sample_breakpoints.py to sample random genomic breakpoints,
     #    2x to allow for consuming two fragments for translocations
     # 2. Expand each breakpoint to a fragment of length 10x max_len + max deletion size on each side
@@ -157,6 +165,8 @@ rule sim_AAV_loci:
         scrip_dir=config['pipeline_dir'] / "workflow/scripts",
         seed_arg=get_repeat_seed,
         minimap2_seed=lambda wildcards: get_repeat_seed(wildcards, "minimap2")
+    container:
+        main_image
     threads: 4
     # 1. Pipe integration site fragments into add_integration.py
     # 2. Sample AAV fragments and integrate them into the 
@@ -221,6 +231,8 @@ rule sim_genome_loci:
         wgsim_seed=lambda wildcards: get_repeat_seed(wildcards, "wgsim"),
         minimap2_seed=lambda wildcards: get_repeat_seed(wildcards, "minimap2")
     threads: 4
+    container:
+        main_image
     # 1. Use wgsim to sample same size fragments of the genome
     # 2. Use fragment_resizing.py to randomly resize these fragments
     #    such that the resulting fragment size follow a gamma distriubtion
@@ -273,6 +285,8 @@ rule sim_episomes:
         seed_arg=get_repeat_seed,
         minimap2_seed=lambda wildcards: get_repeat_seed(wildcards, "minimap2")
     threads: 4
+    container:
+        main_image
     # 1. Use generate_episomes.py to sample AAV episomal fragments
     # 2. Align these fastq fragments to the target enrichment panel with minimap2
     # 3. Simulate target enrichment and amplification of the fragments
@@ -330,6 +344,8 @@ rule sim_reads:
         vsearch_seed=lambda wildcards: get_repeat_seed(wildcards, "vsearch"),
         badread_seed=lambda wildcards: get_repeat_seed(wildcards, "badread")
     threads: 1
+    container:
+        main_image
     # 1. Merge the target enriched loci w/wo AAV integration and episomal AAV
     # 2. Suffle loci with VSEARCH
     # 3. gzip merged loci

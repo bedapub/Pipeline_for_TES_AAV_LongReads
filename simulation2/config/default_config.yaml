@@ -170,4 +170,5 @@ badread:
 
 
 
-
+# Container image with all tools, used with --use-singularity:
+main_image: "docker://ghcr.io/bedapub/tes-aav-simulator:v1-paired"

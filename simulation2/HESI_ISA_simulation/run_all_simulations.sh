@@ -17,15 +17,21 @@ limitations under the License.
 
 ### Bash script to start all simulations for HESI ISA read simulation ###
 
-# Glob pattern for config files:
-CONFIG_GLOB="config_files/HESI_ISA_simulation_*"
-
 # Change to run more or less simulations in parallel:
-N_CONCURRENT_RUNS=10
+N_CONCURRENT_RUNS=${N_CONCURRENT_RUNS:-10}
 # Snakemake cores per simulation:
-N_SMK_CORES=20
+N_SMK_CORES=${N_SMK_CORES:-20}
 
-DEFAULT_CONFIG="config_files/default_config.yaml"
+# Default config, and where the generated configs and the outputs go. For paired-end reads e.g.:
+#   DEFAULT_CONFIG=config_files/default_config_short-reads_250nt_100x.yaml \
+#   CONFIG_DIR=config_files_250nt_100x WORK_DIR=simulation_output_250nt_100x \
+#   SMK_ARGS="--use-singularity" bash run_all_simulations.sh
+DEFAULT_CONFIG=${DEFAULT_CONFIG:-config_files/default_config.yaml}
+CONFIG_DIR=${CONFIG_DIR:-config_files}
+WORK_DIR=${WORK_DIR:-simulation_output}
+CONFIG_GLOB="${CONFIG_DIR}/HESI_ISA_simulation_*"
+# Extra snakemake arguments (word-split), e.g. "--use-singularity":
+SMK_ARGS=${SMK_ARGS:-}
 
 # Dry-run toggle: set to true to run snakemake in dry-run mode:
 # false = normal run mode
@@ -39,6 +45,8 @@ if [ "$DRY_RUN" = "2" ]; then
 else
   SNAKE_EXTRA=()
 fi
+read -r -a SMK_EXTRA_ARGS <<< "$SMK_ARGS"
+SNAKE_EXTRA+=("${SMK_EXTRA_ARGS[@]}")
 
 
 
@@ -48,15 +56,15 @@ python setup_simulations.py \
   --params_yaml all_simulations_params.yaml \
   --template_yaml config_files/all_sim_template.yaml \
   --seed_space 100 \
-  --config_out_dir config_files \
-  --workdir simulation_output \
+  --config_out_dir "$CONFIG_DIR" \
+  --workdir "$WORK_DIR" \
   --run_table_out all_simulations_runtable.tsv
 
 
 
 # Prepare to start simulation runs:
 mkdir -p logs
-mkdir -p simulation_output
+mkdir -p "$WORK_DIR"
 shopt -s nullglob
 configs=($CONFIG_GLOB)
 if [ ${#configs[@]} -eq 0 ]; then
