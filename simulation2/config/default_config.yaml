@@ -105,14 +105,22 @@ integration:
 
 # Parameters for preparing for read simulation:
 read_sim:
+    # Read type: "long" (Badread, uses length and badread)
+    # or "paired" (ART paired-end Illumina, uses length_paired and art):
+    type: "long"
+
     # length = mean, stdev on a gamma distribution, with an upper bound:
     # https://www.desmos.com/calculator/z2a3yqssie
     # mean,stdev,max
     length: "9000,3000,30000"
 
+    # Same for read type "paired": sizes of the loci that ART samples
+    # its fragments (art fragment_mean, fragment_sd) from:
+    length_paired: "500,50,600"
+
     # Simulated reads per event*expansion*amplification.
     # This parameter can be thought of as a post-enrichment amplification.
-    # The parameter is passed to Badread:
+    # The parameter is passed to Badread (--quantity) or ART (--fcov):
     coverage: 10
 
     # Number of reads simulated from the genome
@@ -168,6 +176,14 @@ badread:
     random_reads: 0
 
 
+
+# Settings passed on to art_illumina (read type "paired"):
+# https://www.niehs.nih.gov/research/resources/software/biostatistics/art
+art:
+    read_length: 150           # read length (bp)
+    fragment_mean: 300         # mean fragment size (bp)
+    fragment_sd: 50            # standard deviation of the fragment size (bp)
+    sequencing_system: "HS25"  # HiSeq 2500; e.g. "HS20", "NS50", "MSv3" (MiSeq v3)
 
 
 # Container image with all tools, used with --use-singularity:

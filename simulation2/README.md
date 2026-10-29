@@ -7,6 +7,7 @@ The pipeline constructs three classes of fragments: (1) genomic fragments with s
 For integration events, AAV fragments are inserted into randomly drawn genomic loci with optional deletions, insertions, and translocations at junction sites.
 For episomal DNA, AAV fragments are simulated without genomic integration.
 All fragments are subjected to a simulated target-enrichment pulldown to reflect realistic fragment recovery biases, then used as input to a long-read simulator (Badread).
+Alternatively (`read_sim.type: "paired"`), ART simulates paired-end Illumina short reads from the same loci; see [Paired-end short reads](#paired-end-short-reads).
 The resulting reads can be fed into AAV integration detection and analysis pipelines.
 
 ## Processing Steps (Snakemake pipeline)
@@ -81,9 +82,9 @@ The following describes the steps (rules) implemented in the main Snakemake file
      4. Apply enrichment simulation (no amplification, only leakage)
    - **Output**: `{repeat}_episome_loci.fa.gz`
 
-6. **Combine and shuffle loci + simulate reads (`sim_reads`)**  
-   - **Tool**: `badread`
-   - **Purpose**: Merge all fragment types and simulate PacBio-style reads
+6. **Combine and shuffle loci (`sim_loci`), then simulate reads (`sim_long_reads` or `sim_paired_reads`)**  
+   - **Tool**: `vsearch`, then `badread` (read type `long`) or `art_illumina` (read type `paired`)
+   - **Purpose**: Merge all fragment types and simulate PacBio-style reads (or paired-end Illumina reads)
    - **Process**:
      1. Concatenate enriched loci from three sources:
         - Integration loci (AAV-containing)
@@ -91,7 +92,7 @@ The following describes the steps (rules) implemented in the main Snakemake file
         - Episome loci (episomal AAV)
      2. Shuffle merged loci with `vsearch` to eliminate positional bias
      3. Compress shuffled loci (serves as a reference)
-     4. Run `badread simulate` with user-specified parameters:
+     4. Read type `paired`: run `art_illumina --paired` with the `art` settings and the `read_sim.coverage` as fold coverage, see [Paired-end short reads](#paired-end-short-reads). Read type `long`: run `badread simulate` with user-specified parameters:
         - Coverage model (depth per locus)
         - Identity distribution (mean, stdev)
         - Error model (e.g., pacbio2021)
@@ -177,9 +178,10 @@ The following command-line tools must be installed and available in your PATH:
 |------|---------|---------|------------|---------------|
 | `wgsim` | Raw fragment sampling from reference genome | `sim_genome_loci` | [lh3/wgsim](https://github.com/lh3/wgsim) | `a12da33` |
 | `bedtools` | Extract genomic sequences by coordinates | `draw_integration_sites` | [arq5x/bedtools2](https://github.com/arq5x/bedtools2) | `705ccfd` |
-| `vsearch` | Shuffling and sequence manipulation | `draw_integration_sites`, `sim_reads` | [torognes/vsearch](https://github.com/torognes/vsearch) | `d98284e` |
+| `vsearch` | Shuffling and sequence manipulation | `draw_integration_sites`, `sim_loci` | [torognes/vsearch](https://github.com/torognes/vsearch) | `d98284e` |
 | `minimap2` | Alignment to target enrichment panel | `sim_AAV_loci`, `sim_genome_loci`, `sim_episomes` | [lh3/minimap2](https://github.com/lh3/minimap2) | `8170693` |
-| `badread` | Long-read sequencing simulation | `sim_reads` | [rrwick/Badread](https://github.com/rrwick/Badread) | `f38ef6f` |
+| `badread` | Long-read sequencing simulation | `sim_long_reads` | [rrwick/Badread](https://github.com/rrwick/Badread) | `f38ef6f` |
+| `art_illumina` | Paired-end Illumina read simulation (read type `paired` only) | `sim_paired_reads` | [ART](https://www.niehs.nih.gov/research/resources/software/biostatistics/art) | MountRainier 2016-06-05 |
 | `gzip` | Compression of intermediate and final products | All rules | - | - |
 
 
@@ -212,7 +214,8 @@ python workflow/scripts/run_tests.py
 
 ### Final Outputs (Always Generated)
 For each repeat (`repX`):
-- **`{repeat}_simulated_reads.fastq.gz`**: Final synthetic PacBio-style reads with errors, adapters, and quality scores
+- **`{repeat}_simulated_reads.fastq.gz`**: Final synthetic PacBio-style reads with errors, adapters, and quality scores (read type `long`)
+- **`{repeat}_simulated_reads_R1.fastq.gz`**, **`{repeat}_simulated_reads_R2.fastq.gz`**: Final paired-end Illumina reads (read type `paired`, instead of the file above)
 - **`{repeat}_integration_events.tsv`**: Metadata table of simulated integration events (coordinates, AAV breakpoints, orientations, junction details)
 - **`{repeat}_simulation_done`**: Completion marker indicating successful run
 
@@ -400,6 +403,30 @@ Adjust `--cores` to available CPU resources. Use a custom config file to modify 
 For the test config, expected output files will be in `test_run/sim_run-<uuid>/`.
 
 Relative paths in a config resolve against the directory Snakemake is started from.
+
+## Paired-end short reads
+With `read_sim.type: "paired"` the workflow writes paired-end Illumina reads,
+`{repeat}_simulated_reads_R1.fastq.gz` and `_R2.fastq.gz`, instead of PacBio-style reads.
+All steps up to the combined loci are the same; `art_illumina --paired` then samples fragments
+(`art.fragment_mean`, `art.fragment_sd`) from the loci and sequences both ends
+(`art.read_length`, error profile `art.sequencing_system`) to the fold coverage `read_sim.coverage`.
+The locus sizes come from `read_sim.length_paired` (mean,stdev,max), so keep them above the
+fragment size. The read names are ART's: `<locus name>-<n>/1` and `/2`, where the locus name is
+the one in `{repeat}_all_loci.fa.gz` (keep the loci with `keep_intermediate: True`).
+With a `seed`, ART gets `--rndSeed` (seed + repeat - 1) like the other tools.
+
+A ready-made default config for 2x250 nt MiSeq reads at 100x is
+`HESI_ISA_simulation/config_files/default_config_short-reads_250nt_100x.yaml`. Pass it as the
+default config and your own config on top:
+```bash
+snakemake all \
+  --config default_configfile=HESI_ISA_simulation/config_files/default_config_short-reads_250nt_100x.yaml \
+  --configfile my_config.yaml \
+  --snakefile workflow/Snakefile.smk \
+  --cores 4 --use-singularity
+```
+To run all HESI ISA simulations with paired-end reads, see the header of
+`HESI_ISA_simulation/run_all_simulations.sh` (`DEFAULT_CONFIG`, `CONFIG_DIR`, `WORK_DIR`, `SMK_ARGS`).
 
 ## Containers
 Every rule has a `container:` directive with the image in `main_image`. Run with
@@ -593,8 +620,10 @@ Specifies relative probabilities for integration sites across genomic regions. R
 ### Read Simulation Parameters
 | Variable | Full Name | Description | Default | Type |
 |----------|-----------|-------------|---------|------|
-| `read_sim.length` | Read Length Distribution | Comma-separated: mean,stdev,max for gamma-distributed fragment lengths | `9000,3000,30000` | string |
-| `read_sim.coverage` | Sequencing Coverage | Simulated read coverage per integration event (post-enrichment amplification) | `10` | integer |
+| `read_sim.type` | Read Type | `long` (Badread) or `paired` (ART paired-end Illumina) | `long` | string |
+| `read_sim.length` | Read Length Distribution | Comma-separated: mean,stdev,max for gamma-distributed fragment lengths (read type `long`) | `9000,3000,30000` | string |
+| `read_sim.length_paired` | Locus Length Distribution (paired) | Same as `read_sim.length`, for read type `paired`: sizes of the loci that ART samples fragments from | `500,50,600` | string |
+| `read_sim.coverage` | Sequencing Coverage | Simulated read coverage per integration event (post-enrichment amplification); Badread `--quantity` or ART `--fcov` | `10` | integer |
 | `read_sim.genome_reads` | Genome Background Reads | Number of non-integration genomic reads to simulate and submit for simulated pulldown | `10000000` | integer |
 | `read_sim.episomal_reads` | Episomal AAV Reads | Number of episomal AAV DNA fragments to simulate and submit for simulated pulldown | `10000` | integer |
 
@@ -623,6 +652,16 @@ The "twist" model implements an empirical enrichment probability function based 
 | `badread.glitches` | Glitch Parameters | Glitch rate parameters: rate,size,skip | `3000,1,1` | string |
 | `badread.junk_reads` | Junk Read Percentage | Percentage of junk reads (should be 0 for long fragments) | `0` | float |
 | `badread.random_reads` | Random Read Percentage | Percentage of random reads (should be 0 for long fragments) | `0` | float |
+
+### Paired-End Read Parameters (ART)
+Used with `read_sim.type: "paired"` only; passed to `art_illumina`.
+
+| Variable | Full Name | Description | Default | Type |
+|----------|-----------|-------------|---------|------|
+| `art.read_length` | Read Length | Length of each read of a pair (`--len`) | `150` | integer |
+| `art.fragment_mean` | Fragment Mean | Mean size of the sequenced fragments (`--mflen`) | `300` | integer |
+| `art.fragment_sd` | Fragment SD | Standard deviation of the fragment size (`--sdev`) | `50` | integer |
+| `art.sequencing_system` | Sequencing System | ART error profile (`--seqSys`), e.g. `HS25` (HiSeq 2500), `MSv3` (MiSeq v3) | `HS25` | string |
 
 ### Container Image
 | Variable | Full Name | Description | Default | Type |

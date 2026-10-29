@@ -313,18 +313,36 @@ rule sim_episomes:
 # Combine fragments and simulate reads #
 ########################################
 
-# Combine and shuffle loci,
-# then simulate reads using badreads,
-# then clean up:
-rule sim_reads:
+# Combine and shuffle loci:
+rule sim_loci:
     input:
-        integration_sites=config['run_folder'] + "/{repeat}_integration_sites.fa.gz",
         integration_loci=config['run_folder'] + "/{repeat}_integration_loci.fa.gz",
         genome_loci=config['run_folder'] + "/{repeat}_genome_loci.fa.gz",
         episome_loci=config['run_folder'] + "/{repeat}_episome_loci.fa.gz"
     output:
-        sim_reads=config['run_folder'] + "/{repeat}_simulated_reads.fastq.gz",
         sim_loci=config['run_folder'] + "/{repeat}_all_loci.fa.gz"
+    params:
+        max_len=config["read_sim"]["max_len"],
+        vsearch_seed=lambda wildcards: get_repeat_seed(wildcards, "vsearch")
+    threads: 1
+    container:
+        main_image
+    # 1. Merge the target enriched loci w/wo AAV integration and episomal AAV
+    # 2. Suffle loci with VSEARCH
+    # 3. gzip merged loci
+    shell:
+        "gunzip -dc {input.integration_loci} {input.genome_loci} {input.episome_loci} | "
+        "vsearch --fasta_width=0 --maxseqlengt={params.max_len} "
+        "{params.vsearch_seed} --output /dev/stdout --shuffle - | "
+        "gzip > {output.sim_loci}"
+
+
+# Simulate long reads from the loci using Badread (read_sim type "long"):
+rule sim_long_reads:
+    input:
+        sim_loci=config['run_folder'] + "/{repeat}_all_loci.fa.gz"
+    output:
+        sim_reads=config['run_folder'] + "/{repeat}_simulated_reads.fastq.gz"
     params:
         max_len=config["read_sim"]["max_len"],
 
@@ -341,22 +359,12 @@ rule sim_reads:
         glitches=config["badread"]["glitches"],
         junk_reads=config["badread"]["junk_reads"],
         random_reads=config["badread"]["random_reads"],
-        vsearch_seed=lambda wildcards: get_repeat_seed(wildcards, "vsearch"),
         badread_seed=lambda wildcards: get_repeat_seed(wildcards, "badread")
     threads: 1
     container:
         main_image
-    # 1. Merge the target enriched loci w/wo AAV integration and episomal AAV
-    # 2. Suffle loci with VSEARCH
-    # 3. gzip merged loci
-    # 4. Run badreads to sample reads from these loci
-    # 5. [optional] Remove all intermediate files
     shell:
-        "gunzip -dc {input.integration_loci} {input.genome_loci} {input.episome_loci} | "
-        "vsearch --fasta_width=0 --maxseqlengt={params.max_len} "
-        "{params.vsearch_seed} --output /dev/stdout --shuffle - | "
-        "gzip > {output.sim_loci} && "
-        "badread simulate --reference {output.sim_loci} --quantity {params.coverage}x "
+        "badread simulate --reference {input.sim_loci} --quantity {params.coverage}x "
         "--length {params.max_len},0 --identity {params.identity} "
         "--error_model {params.error_model} --qscore_model {params.qscore_model} "
         "--start_adapter {params.start_adapter} --end_adapter {params.end_adapter} "
@@ -366,18 +374,60 @@ rule sim_reads:
         "--random_reads {params.random_reads} {params.badread_seed} | gzip > {output.sim_reads}"
 
 
+# Simulate paired-end Illumina reads from the loci using ART (read_sim type "paired"):
+rule sim_paired_reads:
+    input:
+        sim_loci=config['run_folder'] + "/{repeat}_all_loci.fa.gz"
+    output:
+        sim_reads_r1=config['run_folder'] + "/{repeat}_simulated_reads_R1.fastq.gz",
+        sim_reads_r2=config['run_folder'] + "/{repeat}_simulated_reads_R2.fastq.gz"
+    params:
+        # ART parameters (config.get: the art section is optional for long-read runs):
+        coverage=config["read_sim"]["coverage"],
+        read_length=config.get("art", {}).get("read_length"),
+        fragment_mean=config.get("art", {}).get("fragment_mean"),
+        fragment_sd=config.get("art", {}).get("fragment_sd"),
+        sequencing_system=config.get("art", {}).get("sequencing_system"),
+        art_seed=lambda wildcards: get_repeat_seed(wildcards, "art"),
+        tmp_prefix=config['run_folder'] + "/{repeat}_art_tmp"
+    threads: 1
+    container:
+        main_image
+    # 1. Decompress the loci (ART reads plain FASTA only)
+    # 2. Run art_illumina to sample paired-end reads from these loci
+    # 3. gzip the reads (-n: no name or time stamp) and remove the temporary files
+    shell:
+        "gunzip -c {input.sim_loci} > {params.tmp_prefix}_ref.fa && "
+        "art_illumina --paired --noALN --in {params.tmp_prefix}_ref.fa "
+        "--out {params.tmp_prefix}_ --len {params.read_length} --fcov {params.coverage} "
+        "--mflen {params.fragment_mean} --sdev {params.fragment_sd} "
+        "--seqSys {params.sequencing_system} {params.art_seed} && "
+        "gzip -nc {params.tmp_prefix}_1.fq > {output.sim_reads_r1} && "
+        "gzip -nc {params.tmp_prefix}_2.fq > {output.sim_reads_r2} && "
+        "rm {params.tmp_prefix}_ref.fa {params.tmp_prefix}_1.fq {params.tmp_prefix}_2.fq"
+
+
 # A downsampling rule can be added here if needed.
+
 
 
 #########
 # Clean #
 #########
 
+# Simulated reads of the selected read type:
+def get_sim_reads(wildcards):
+    prefix = config['run_folder'] + f"/{wildcards.repeat}_simulated_reads"
+    if config["read_sim"]["type"] == "paired":
+        return [prefix + "_R1.fastq.gz", prefix + "_R2.fastq.gz"]
+    return [prefix + ".fastq.gz"]
+
+
 # Remove intermediate files:
 if config["keep_intermediate"]:
     rule clean:
         input:
-            sim_reads=config['run_folder'] + "/{repeat}_simulated_reads.fastq.gz",
+            sim_reads=get_sim_reads,
             sim_loci=config['run_folder'] + "/{repeat}_all_loci.fa.gz",
             integration_sites=config['run_folder'] + "/{repeat}_integration_sites.fa.gz",
             integration_loci=config['run_folder'] + "/{repeat}_integration_loci.fa.gz",
@@ -390,7 +440,7 @@ if config["keep_intermediate"]:
 else:
     rule clean:
         input:
-            sim_reads=config['run_folder'] + "/{repeat}_simulated_reads.fastq.gz",
+            sim_reads=get_sim_reads,
             sim_loci=config['run_folder'] + "/{repeat}_all_loci.fa.gz",
             integration_sites=config['run_folder'] + "/{repeat}_integration_sites.fa.gz",
             integration_loci=config['run_folder'] + "/{repeat}_integration_loci.fa.gz",
@@ -404,7 +454,6 @@ else:
             "rm {input.sim_loci} {input.integration_loci} {input.genome_loci} {input.episome_loci} {input.integration_sites} && "
             "rm -f {params.kde_plot} && "
             "touch {output}"
-
 
 
 

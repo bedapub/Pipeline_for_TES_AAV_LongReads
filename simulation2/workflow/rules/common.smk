@@ -54,11 +54,26 @@ def parse_config():
     else:
         raise ValueError(f"expansion must be an integer or list of integers, got {type(expansion)}: {expansion}")
 
+    # Read type: "long" (Badread, read_sim.length) or "paired" (ART, read_sim.length_paired):
+    read_type = config["read_sim"].setdefault("type", "long")
+    if read_type == "long":
+        length_key = "length"
+    elif read_type == "paired":
+        length_key = "length_paired"
+        missing = [k for k in ("read_length", "fragment_mean", "fragment_sd", "sequencing_system")
+                   if config.get("art", {}).get(k) is None]
+        if missing:
+            raise ValueError(f"read_sim type 'paired' needs art: {', '.join(missing)}")
+    else:
+        raise ValueError(f"read_sim type must be 'long' or 'paired', got: {read_type}")
+    if length_key not in config["read_sim"]:
+        raise ValueError(f"read_sim type '{read_type}' needs read_sim {length_key} (mean,stdev,max)")
+
     # Parse config file to read simulation length specification:
     config["read_sim"]["mean_frag_len"], \
       config["read_sim"]["stdev_frag_len"], \
       config["read_sim"]["max_len"] = \
-      list(map(int, config["read_sim"]["length"].split(',')))
+      list(map(int, config["read_sim"][length_key].split(',')))
 
     # Check if genomic integration fragment length exceeds 1e6 bp
     genomic_frag_len = 10 * config["read_sim"]["max_len"] + 2 * config["integration"]["deletion"]["max_size"]
@@ -125,6 +140,8 @@ def get_repeat_seed(wildcards, tool=""):
         return f"--randseed {repeat_seed}"
     elif tool == "minimap2" or tool == "badread" or tool == "":
         return f"--seed {repeat_seed}"
+    elif tool == "art":
+        return f"--rndSeed {repeat_seed}"
     else:
         return f"--seed {repeat_seed}"
 
