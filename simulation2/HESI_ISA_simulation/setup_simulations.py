@@ -194,18 +194,17 @@ def fill_config_values(template_data, combo, params, config_dir, run_name):
     bias = combo['IS_site_bias']
     clon = combo['clonality']
     
-    # Map to actual file paths and values with file existence checks
+    # Map to actual file paths and values with file existence checks.
+    # Use the resolved absolute paths returned by check_file_exists()
+    # so that generated configs work regardless of the working directory.
     genome_file = params['genome_fnam'][genome]
-    check_file_exists(genome_file, f"Genome file for {genome}", config_dir)
-    config['genome_fnam'] = genome_file
+    config['genome_fnam'] = check_file_exists(genome_file, f"Genome file for {genome}", config_dir)
     
     aav_genome_file = params['AAV_genome_fnam'][aav]
-    check_file_exists(aav_genome_file, f"AAV genome file for {aav}", config_dir)
-    config['AAV_genome_fnam'] = aav_genome_file
+    config['AAV_genome_fnam'] = check_file_exists(aav_genome_file, f"AAV genome file for {aav}", config_dir)
     
     tes_panel_file = params['tes_panel_fnam'][aav]
-    check_file_exists(tes_panel_file, f"TES panel file for {aav}", config_dir)
-    config['tes_panel_fnam'] = tes_panel_file
+    config['tes_panel_fnam'] = check_file_exists(tes_panel_file, f"TES panel file for {aav}", config_dir)
     
     config['integration']['events'] = params['integration']['events'][clon]
     
@@ -217,16 +216,13 @@ def fill_config_values(template_data, combo, params, config_dir, run_name):
         config['integration']['expansion'] = expansion_value
     
     prob_file = params['integration']['aav']['prob_file'][aav]
-    check_file_exists(prob_file, f"AAV breakpoint probability file for {aav}", config_dir)
-    config['integration']['aav']['prob_file'] = prob_file
+    config['integration']['aav']['prob_file'] = check_file_exists(prob_file, f"AAV breakpoint probability file for {aav}", config_dir)
     
     empirical_sizes_file = params['integration']['aav']['empirical_sizes'][aav]
-    check_file_exists(empirical_sizes_file, f"AAV empirical sizes file for {aav}", config_dir)
-    config['integration']['aav']['empirical_sizes'] = empirical_sizes_file
+    config['integration']['aav']['empirical_sizes'] = check_file_exists(empirical_sizes_file, f"AAV empirical sizes file for {aav}", config_dir)
     
     sampling_prob_file = params['integration']['sampling_prob_bed'][bias]
-    check_file_exists(sampling_prob_file, f"Integration site sampling probability file for {bias}", config_dir)
-    config['integration']['sampling_prob_bed'] = sampling_prob_file
+    config['integration']['sampling_prob_bed'] = check_file_exists(sampling_prob_file, f"Integration site sampling probability file for {bias}", config_dir)
     
     return config
 
@@ -295,6 +291,8 @@ def main():
         for rep_num in range(1, repeats + 1):
             rep_name = f"rep{rep_num}"
             fastq_filename = f"{rep_name}_simulated_reads.fastq.gz"
+            fastq_filename_r1 = f"{rep_name}_simulated_reads_R1.fastq.gz"
+            fastq_filename_r2 = f"{rep_name}_simulated_reads_R2.fastq.gz"
             
             # Determine workdir: prefer per-config, fall back to template default, then to output dir
             # workdir_val = config.get('workdir') or template_data.get('workdir')
@@ -313,6 +311,8 @@ def main():
                 'config_file': str(config_filepath),
                 'result_dir': result_dir,
                 'fastq_file': fastq_filename,
+                'fastq_file_r1': fastq_filename_r1,
+                'fastq_file_r2': fastq_filename_r2,
                 'genome': combo['genome'],
                 'AAV': combo['AAV'],
                 'IS_site_bias': combo['IS_site_bias'],
@@ -335,7 +335,8 @@ def main():
     run_table = pd.DataFrame(run_table_data)
     # Reorder columns for better readability:
     column_order = [
-        'run_index', 'run_name', 'replicate', 'config_file', 'result_dir', 'fastq_file',
+        'run_index', 'run_name', 'replicate', 'config_file', 'result_dir', 
+        'fastq_file', 'fastq_file_r1', 'fastq_file_r2',
         'genome', 'AAV', 'IS_site_bias', 'clonality',
         'genome_fnam', 'AAV_genome_fnam', 'tes_panel_fnam', 
         'prob_file', 'empirical_sizes', 'sampling_prob_bed',

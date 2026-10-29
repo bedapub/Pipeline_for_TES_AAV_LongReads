@@ -19,10 +19,10 @@ limitations under the License.
 
 # Download and prepare human reference genome (GRCh38):
 wget ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
-mv GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz GRCh38.fa.gz
+mv --force GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz GRCh38.fa.gz
 gunzip GRCh38.fa.gz
 (for i in {1..22}; do echo chr$i; done; echo chrX; echo chrY) | sort | uniq | seqtk subseq -l 60 GRCh38.fa - > GRCh38.fa_clean
-mv GRCh38.fa_clean GRCh38.fa
+mv --force GRCh38.fa_clean GRCh38.fa
 samtools faidx GRCh38.fa
 
 

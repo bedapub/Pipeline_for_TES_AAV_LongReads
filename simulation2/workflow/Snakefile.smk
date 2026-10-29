@@ -47,15 +47,16 @@ if not Path(default_config_path).is_file():
     sys.exit(f"Error: Default config file {default_config_path} does not exist.")
 configfile: default_config_path
 
-# Change directories:
+# Resolve workdir to an absolute path. No `workdir:` directive: it changes
+# os.getcwd(), and cluster jobs that re-evaluate this file would then nest
+# the relative workdir again (simulation_output/simulation_output/...).
+# Relative paths in the config are therefore relative to the launch directory.
 original_workdir = os.getcwd()
 config['workdir'] = str(Path(original_workdir) / config['workdir'])
-workdir: config['workdir']
 include: pipeline_dir / "workflow/rules/common.smk"
 config['pipeline_dir'] = pipeline_dir
 config['scripts_dir'] = pipeline_dir / "workflow/scripts"
 parse_config()
-
 
 
 ###############
@@ -156,7 +157,7 @@ rule sim_AAV_loci:
         scrip_dir=config['pipeline_dir'] / "workflow/scripts",
         seed_arg=get_repeat_seed,
         minimap2_seed=lambda wildcards: get_repeat_seed(wildcards, "minimap2")
-    threads: 1
+    threads: 4
     # 1. Pipe integration site fragments into add_integration.py
     # 2. Sample AAV fragments and integrate them into the 
     #    integration site fragments, then fragment again to
@@ -176,7 +177,7 @@ rule sim_AAV_loci:
         "--del_max {params.del_max_len} --del_flag \"{params.del_flag}\" "
         "--ins_flag \"{params.ins_flag}\" --p_trans {params.p_trans} "
         "{params.seed_arg} | "
-        "minimap2 {params.minimap2_seed} --eqx -t1 -k{params.k} -w2 --sr --frag=yes "
+        "minimap2 {params.minimap2_seed} --eqx -t{threads} -k{params.k} -w2 --sr --frag=yes "
         "-A1 -B120 -O20,40 -E40,25 -b0 -r100 -f1000,5000 "
         "-n2 -m{params.enrich_min_len} -s{params.enrich_min_len} "
         "--secondary=no -a {params.tes_panel_fnam} - | "
@@ -219,7 +220,7 @@ rule sim_genome_loci:
         seed_arg=get_repeat_seed,
         wgsim_seed=lambda wildcards: get_repeat_seed(wildcards, "wgsim"),
         minimap2_seed=lambda wildcards: get_repeat_seed(wildcards, "minimap2")
-    threads: 3
+    threads: 4
     # 1. Use wgsim to sample same size fragments of the genome
     # 2. Use fragment_resizing.py to randomly resize these fragments
     #    such that the resulting fragment size follow a gamma distriubtion
@@ -233,7 +234,7 @@ rule sim_genome_loci:
         "python {params.scrip_dir}/fragment_resizing.py "
         "--mfl {params.mean_frag_len} --sfl {params.stdev_frag_len} "
         "{params.seed_arg} | "
-        "minimap2 {params.minimap2_seed} -t4 -k{params.k} -w2 --sr --frag=yes "
+        "minimap2 {params.minimap2_seed} -t{threads} -k{params.k} -w2 --sr --frag=yes "
         "-A1 -B120 -O20,40 -E40,25 -b0 -r100 -f1000,5000 "
         "-n2 -m{params.enrich_min_len} -s{params.enrich_min_len} "
         "--secondary=no -a {params.tes_panel_fnam} - | "
@@ -271,7 +272,7 @@ rule sim_episomes:
         scrip_dir=config['pipeline_dir'] / "workflow/scripts",
         seed_arg=get_repeat_seed,
         minimap2_seed=lambda wildcards: get_repeat_seed(wildcards, "minimap2")
-    threads: 1
+    threads: 4
     # 1. Use generate_episomes.py to sample AAV episomal fragments
     # 2. Align these fastq fragments to the target enrichment panel with minimap2
     # 3. Simulate target enrichment and amplification of the fragments
@@ -282,7 +283,7 @@ rule sim_episomes:
         "--aav {params.AAV_genome_fnam} --aav_method \"{params.aav_method}\" "
         "{params.aav_prob_file} {params.aav_empirical_sizes} --events {params.N} "
         "{params.seed_arg} | "
-        "minimap2 {params.minimap2_seed} --eqx -t1 -k{params.k} -w2 --sr --frag=yes "
+        "minimap2 {params.minimap2_seed} --eqx -t{threads} -k{params.k} -w2 --sr --frag=yes "
         "-A1 -B120 -O20,40 -E40,25 -b0 -r100 -f1000,5000 "
         "-n2 -m{params.enrich_min_len} -s{params.enrich_min_len} "
         "--secondary=no -a {params.tes_panel_fnam} - | "

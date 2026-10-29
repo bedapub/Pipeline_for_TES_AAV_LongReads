@@ -399,6 +399,8 @@ snakemake all \
 Adjust `--cores` to available CPU resources. Use a custom config file to modify fragment distributions or AAV integration parameters for scenario exploration.
 For the test config, expected output files will be in `test_run/sim_run-<uuid>/`.
 
+Relative paths in a config resolve against the directory Snakemake is started from.
+
 ## Running Unit Tests
 
 The pipeline includes a suite of tests to validate core functionality. Tests are located in `workflow/scripts/tests/` and use Python's `unittest` framework.

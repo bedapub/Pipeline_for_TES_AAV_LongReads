@@ -64,7 +64,7 @@ def parse_config():
     genomic_frag_len = 10 * config["read_sim"]["max_len"] + 2 * config["integration"]["deletion"]["max_size"]
     if genomic_frag_len > 1e6:
         print(f"WARNING: Genomic integration fragment length ({genomic_frag_len} bp) exceeds 1e6 bp.", file=sys.stderr)
-        print(f"         This results no integrations in large parts of the beginning and end of each chromosome.", file=sys.stderr)
+        print(f"         This results in no integrations in large parts of the beginning and end of each chromosome.", file=sys.stderr)
         print(f"         Fragment length = 10 × max_read_length ({config['read_sim']['max_len']}) + 2 × max_deletion_size ({config['integration']['deletion']['max_size']})", file=sys.stderr)
 
     # Extract the minimum length of enrichment:
