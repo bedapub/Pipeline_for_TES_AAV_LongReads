@@ -166,15 +166,15 @@ def make_abs_path():
     A value is considered path-like if:
       - It is a Path instance, OR
       - It is a string containing a path separator, starts with '.', '~', or '/',
-        or points to an existing file/dir.
+        or points to an existing file/dir, and is not a URL (no '://').
     """
 
     def _normalize(v):
         # Path objects
         if isinstance(v, Path):
             return v.expanduser().resolve()
-        # Strings that might be paths
-        if isinstance(v, str):
+        # Strings that might be paths (URLs such as docker://... are not):
+        if isinstance(v, str) and '://' not in v:
             looks_like_path = (
                 os.sep in v or
                 v.startswith('.') or
